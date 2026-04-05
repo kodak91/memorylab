@@ -209,9 +209,22 @@ function CreateScreen({ onSave, onBack }) {
     termRef.current?.focus();
   };
   const addPaste = () => {
-    const terms = paste.split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
-    if (!terms.length) return;
-    setItems((p) => [...p, ...terms.map((t) => ({ id: uid(), term: t, definition: "" }))]);
+    if (type === "flashcard") {
+      const lines = paste.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
+      if (!lines.length) return;
+      const newItems = lines.map((line) => {
+        const dashIdx = line.indexOf(" - ");
+        if (dashIdx !== -1) return { id: uid(), term: line.slice(0, dashIdx).trim(), definition: line.slice(dashIdx + 3).trim() };
+        const simpleDash = line.indexOf("-");
+        if (simpleDash > 0) return { id: uid(), term: line.slice(0, simpleDash).trim(), definition: line.slice(simpleDash + 1).trim() };
+        return { id: uid(), term: line, definition: "" };
+      });
+      setItems((p) => [...p, ...newItems]);
+    } else {
+      const terms = paste.split(/[,.\n]/).map((s) => s.trim()).filter(Boolean);
+      if (!terms.length) return;
+      setItems((p) => [...p, ...terms.map((t) => ({ id: uid(), term: t, definition: "" }))]);
+    }
     setPaste("");
   };
   const save = async () => {
@@ -268,7 +281,9 @@ function CreateScreen({ onSave, onBack }) {
       {method === "paste" && (
         <div style={{ marginBottom: 16 }}>
           <textarea style={{ ...inp, resize: "vertical", minHeight: 100, lineHeight: 1.7, display: "block", marginBottom: 8 }}
-            placeholder={"쉼표 또는 줄바꿈으로 구분해서 붙여넣기\n예: 수은, 납, 비소, 크롬, 포름알데히드"}
+            placeholder={type === "flashcard"
+              ? "단어 - 정의 형식으로 입력 (쉼표 또는 줄바꿈으로 구분)\n예:\n수은 - 독성 중금속\n납 - 중금속\n비소 - 독성 원소"
+              : "쉼표, 마침표 또는 줄바꿈으로 구분\n예: 수은, 납. 비소\n크롬, 포름알데히드"}
             value={paste} onChange={(e) => setPaste(e.target.value)} />
           <button style={{ ...btnG, width: "100%" }} onClick={addPaste}>항목으로 추가하기</button>
         </div>
@@ -309,10 +324,42 @@ function CreateScreen({ onSave, onBack }) {
 // ============================================================
 // DETAIL SCREEN
 // ============================================================
-function DetailScreen({ set, onBack, onDelete, onStartRecall, onStartFlash }) {
+function DetailScreen({ set, onBack, onDelete, onStartRecall, onStartFlash, onUpdateSet }) {
   const [showM, setShowM] = useState(false);
   const [chunkIdx, setChunkIdx] = useState(null);
+  const [editMode, setEditMode] = useState(false);
+  const [editItems, setEditItems] = useState(set.items);
+  const [newTerm, setNewTerm] = useState("");
+  const [newDef, setNewDef] = useState("");
+  const [copied, setCopied] = useState(false);
   const m = set.mnemonics;
+
+  const shareSet = async () => {
+    const content = set.type === "flashcard"
+      ? set.items.map((i) => i.definition ? `${i.term} - ${i.definition}` : i.term).join("\n")
+      : set.items.map((i) => i.term).join(", ");
+    const text = `${set.title}\n\n${content}`;
+    if (navigator.share) {
+      try { await navigator.share({ title: set.title, text }); } catch {}
+    } else {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const saveItemEdits = () => {
+    const filtered = editItems.filter((it) => it.term.trim());
+    onUpdateSet({ ...set, items: filtered });
+    setEditMode(false);
+  };
+
+  const addNewItem = () => {
+    if (!newTerm.trim()) return;
+    setEditItems((p) => [...p, { id: uid(), term: newTerm.trim(), definition: newDef.trim() }]);
+    setNewTerm("");
+    setNewDef("");
+  };
 
   return (
     <div className="fu">
@@ -325,6 +372,9 @@ function DetailScreen({ set, onBack, onDelete, onStartRecall, onStartFlash }) {
             <Tag>{set.items.length}개</Tag>
           </div>
         </div>
+        <button style={{ ...btnG, padding: "8px 14px", fontSize: 13 }} onClick={shareSet}>
+          {copied ? "✓ 복사됨" : "🔗 공유"}
+        </button>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
@@ -376,18 +426,57 @@ function DetailScreen({ set, onBack, onDelete, onStartRecall, onStartFlash }) {
         </div>
       )}
 
-      <Label>항목 목록</Label>
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 24 }}>
-        {set.items.map((item, i) => (
-          <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surf)", borderRadius: "var(--rs)", padding: "10px 14px", border: "1.5px solid var(--bdr)" }}>
-            <span style={{ fontSize: 11, color: "var(--t3)", minWidth: 18, fontWeight: 700 }}>{i + 1}</span>
-            <span style={{ flex: 1, fontSize: 14 }}>{item.term}</span>
-            {item.definition && <span style={{ fontSize: 13, color: "var(--t2)" }}>{item.definition}</span>}
-          </div>
-        ))}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <Label>항목 목록</Label>
+        {!editMode
+          ? <button style={{ ...btnG, padding: "4px 12px", fontSize: 12 }} onClick={() => { setEditItems(set.items); setEditMode(true); }}>✏️ 편집</button>
+          : <div style={{ display: "flex", gap: 6 }}>
+              <button style={{ ...btnG, padding: "4px 12px", fontSize: 12 }} onClick={() => setEditMode(false)}>취소</button>
+              <button style={{ ...btnP, padding: "4px 12px", fontSize: 12 }} onClick={saveItemEdits}>저장</button>
+            </div>
+        }
       </div>
 
-      <button onClick={() => onDelete(set.id)} style={{ width: "100%", padding: 12, background: "var(--err-d)", border: "1.5px solid var(--err-b)", borderRadius: "var(--rs)", color: "var(--err)", cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 500 }}>
+      {!editMode ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 24 }}>
+          {set.items.map((item, i) => (
+            <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surf)", borderRadius: "var(--rs)", padding: "10px 14px", border: "1.5px solid var(--bdr)" }}>
+              <span style={{ fontSize: 11, color: "var(--t3)", minWidth: 18, fontWeight: 700 }}>{i + 1}</span>
+              <span style={{ flex: 1, fontSize: 14 }}>{item.term}</span>
+              {item.definition && <span style={{ fontSize: 13, color: "var(--t2)" }}>{item.definition}</span>}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
+          {editItems.map((item, i) => (
+            <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--surf)", borderRadius: "var(--rs)", padding: "8px 10px", border: "1.5px solid var(--bdr)" }}>
+              <span style={{ fontSize: 11, color: "var(--t3)", minWidth: 18, fontWeight: 700 }}>{i + 1}</span>
+              <input style={{ ...inp, flex: 1, padding: "6px 8px", fontSize: 13 }} value={item.term}
+                onChange={(e) => setEditItems((p) => p.map((it) => it.id === item.id ? { ...it, term: e.target.value } : it))} />
+              {set.type === "flashcard" && (
+                <input style={{ ...inp, flex: 1, padding: "6px 8px", fontSize: 13 }} value={item.definition} placeholder="정의"
+                  onChange={(e) => setEditItems((p) => p.map((it) => it.id === item.id ? { ...it, definition: e.target.value } : it))} />
+              )}
+              <button onClick={() => setEditItems((p) => p.filter((it) => it.id !== item.id))}
+                style={{ background: "none", border: "none", color: "var(--err)", cursor: "pointer", fontSize: 16, padding: 4 }}>✕</button>
+            </div>
+          ))}
+          <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+            <input style={{ ...inp, flex: 1, padding: "8px 10px", fontSize: 13 }} value={newTerm}
+              onChange={(e) => setNewTerm(e.target.value)} placeholder="새 항목"
+              onKeyDown={(e) => { if (e.key === "Enter") addNewItem(); }} />
+            {set.type === "flashcard" && (
+              <input style={{ ...inp, flex: 1, padding: "8px 10px", fontSize: 13 }} value={newDef}
+                onChange={(e) => setNewDef(e.target.value)} placeholder="정의"
+                onKeyDown={(e) => { if (e.key === "Enter") addNewItem(); }} />
+            )}
+            <button style={{ ...btnG, padding: "8px 12px", fontSize: 14 }} onClick={addNewItem}>+</button>
+          </div>
+        </div>
+      )}
+
+      <button onClick={() => onDelete(set.id)} style={{ width: "100%", padding: 12, background: "var(--err-d)", border: "1.5px solid var(--err-b)", borderRadius: "var(--rs)", color: "var(--err)", cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 500, marginTop: editMode ? 8 : 0 }}>
         세트 삭제
       </button>
     </div>
@@ -634,6 +723,7 @@ export default function App() {
   const openSet = (s) => { setCurrent(s); setScreen("detail"); };
   const addSet = (s) => { setSets((p) => [s, ...p]); setCurrent(s); setScreen("detail"); };
   const deleteSet = (id) => { setSets((p) => p.filter((s) => s.id !== id)); goHome(); };
+  const updateSet = (s) => { setSets((p) => p.map((x) => x.id === s.id ? s : x)); setCurrent(s); };
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)", maxWidth: 480, margin: "0 auto", padding: "28px 18px 64px" }}>
@@ -641,7 +731,8 @@ export default function App() {
       {screen === "create" && <CreateScreen onSave={addSet} onBack={goHome} />}
       {screen === "detail" && current && (
         <DetailScreen set={current} onBack={goHome} onDelete={deleteSet}
-          onStartRecall={() => setScreen("recall")} onStartFlash={() => setScreen("flashcard")} />
+          onStartRecall={() => setScreen("recall")} onStartFlash={() => setScreen("flashcard")}
+          onUpdateSet={updateSet} />
       )}
       {screen === "recall" && current && <RecallScreen set={current} onBack={() => setScreen("detail")} />}
       {screen === "flashcard" && current && <FlashcardScreen set={current} onBack={() => setScreen("detail")} />}
