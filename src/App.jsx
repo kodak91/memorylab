@@ -369,9 +369,20 @@ function CreateScreen({ onSave, onBack, prefill }) {
     termRef.current?.focus();
   };
   const addPaste = () => {
-    const terms = paste.split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
-    if (!terms.length) return;
-    setItems((p) => [...p, ...terms.map((t) => ({ id: uid(), term: t, definition: "" }))]);
+    if (type === "flashcard") {
+      const lines = paste.split(/\n/).map((s) => s.trim()).filter(Boolean);
+      if (!lines.length) return;
+      const newItems = lines.map((line) => {
+        const dashIdx = line.indexOf("-");
+        if (dashIdx !== -1) return { id: uid(), term: line.slice(0, dashIdx).trim(), definition: line.slice(dashIdx + 1).trim() };
+        return { id: uid(), term: line, definition: "" };
+      });
+      setItems((p) => [...p, ...newItems]);
+    } else {
+      const terms = paste.split(/[,.\n]/).map((s) => s.trim()).filter(Boolean);
+      if (!terms.length) return;
+      setItems((p) => [...p, ...terms.map((t) => ({ id: uid(), term: t, definition: "" }))]);
+    }
     setPaste("");
   };
   const save = async () => {
@@ -428,7 +439,9 @@ function CreateScreen({ onSave, onBack, prefill }) {
       {method === "paste" && (
         <div style={{ marginBottom: 16 }}>
           <textarea style={{ ...inp, resize: "vertical", minHeight: 100, lineHeight: 1.7, display: "block", marginBottom: 8 }}
-            placeholder={"쉼표 또는 줄바꿈으로 구분해서 붙여넣기\n예: 수은, 납, 비소, 크롬, 포름알데히드"}
+            placeholder={type === "flashcard"
+              ? "단어-정의 형식으로 입력 (줄바꿈으로 구분)\n예:\n수은-독성 중금속\n납-중금속\n비소-독성 원소"
+              : "쉼표, 마침표, 줄바꿈으로 구분\n예: 수은, 납. 비소\n크롬, 포름알데히드"}
             value={paste} onChange={(e) => setPaste(e.target.value)} />
           <button style={{ ...btnG, width: "100%" }} onClick={addPaste}>항목으로 추가하기</button>
         </div>
