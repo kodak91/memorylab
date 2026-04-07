@@ -142,7 +142,7 @@ const ProgBar = ({ pct, color = "var(--acc)" }) => (
 // ============================================================
 // HOME SCREEN
 // ============================================================
-function HomeScreen({ sets, onOpen, onCreate }) {
+function HomeScreen({ sets, onOpen, onCreate, onConvert }) {
   return (
     <div className="fu">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 32 }}>
@@ -150,7 +150,10 @@ function HomeScreen({ sets, onOpen, onCreate }) {
           <h1 style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--t1)" }}>MemoryLab</h1>
           <p style={{ fontSize: 13, color: "var(--t2)", marginTop: 4 }}>리콜 + 플래시카드 암기 앱</p>
         </div>
-        <button style={btnP} onClick={onCreate}>+ 새 세트</button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button style={btnG} onClick={onConvert}>📋 변환기</button>
+          <button style={btnP} onClick={onCreate}>+ 새 세트</button>
+        </div>
       </div>
       {sets.length === 0 ? (
         <div style={{ textAlign: "center", padding: "80px 20px", color: "var(--t3)" }}>
@@ -188,13 +191,170 @@ function SetCard({ set, onClick }) {
 }
 
 // ============================================================
+// CONVERTER SCREEN (Flashcard Maker Skill)
+// ============================================================
+async function convertTextToItems(rawText, type) {
+  const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
+
+  const typeDesc = type === "recall"
+    ? "리콜(Recall) 타입: 쉼표(,)로 단어/개념을 이어서 나열. 문단이나 마침표 단위로 카드를 나누되 한 카드 안의 항목은 쉼표로 연결."
+    : "플래시카드(Flashcard) 타입: `단어 - 정의` 형식으로 한 줄에 하나씩. 단어 자체에 하이픈(-)이 포함된 경우 언더스코어(_)로 변환.";
+
+  const systemPrompt = `OCR 텍스트를 암기 앱 형식으로 변환하는 전문가다.
+
+## 출력 형식
+${typeDesc}
+
+## OCR 오류 교정 원칙
+- 받침 탈락/추가, 모음 오인식(ㅗ↔ㅜ, ㅓ↔ㅏ), 자음 오인식(ㄹ↔ㄴ, ㅂ↔ㅍ) 교정
+- 숫자↔글자 혼동(0↔ㅇ, 1↔ㅣ) 교정
+- 약품명, 의학용어, 화학명 등 전문용어 특히 주의
+- 교정한 단어는 [교정 목록]에 명시
+
+## 반드시 JSON으로만 응답 (마크다운 코드블록 없이):
+${type === "recall"
+  ? `{"items":[{"term":"단어1, 단어2, 단어3"},{"term":"단어4, 단어5"}],"corrections":[{"from":"원문","to":"교정"}]}`
+  : `{"items":[{"term":"단어","definition":"정의 설명"}],"corrections":[{"from":"원문","to":"교정"}]}`
+}
+
+corrections 배열은 교정 없으면 빈 배열로.`;
+
+  try {
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-allow-browser": "true",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-5",
+        max_tokens: 2000,
+        system: systemPrompt,
+        messages: [{ role: "user", content: rawText }],
+      }),
+    });
+    const data = await resp.json();
+    const text = data.content?.find((b) => b.type === "text")?.text || "";
+    return JSON.parse(text.replace(/```[a-z]*\n?|```/g, "").trim());
+  } catch (e) {
+    console.error("Convert error:", e);
+    return null;
+  }
+}
+
+function ConverterScreen({ onImport, onBack }) {
+  const [rawText, setRawText] = useState("");
+  const [type, setType] = useState("recall");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState("");
+
+  const convert = async () => {
+    if (!rawText.trim()) return;
+    setLoading(true);
+    setError("");
+    setResult(null);
+    const res = await convertTextToItems(rawText, type);
+    if (!res) {
+      setError("변환 실패. API 키를 확인해주세요.");
+    } else {
+      setResult(res);
+    }
+    setLoading(false);
+  };
+
+  const doImport = () => {
+    if (!result?.items?.length) return;
+    onImport(result.items.map((it) => ({ id: uid(), term: it.term, definition: it.definition || "" })), type);
+  };
+
+  return (
+    <div className="fu">
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 24 }}>
+        <button style={btnG} onClick={onBack}>← 뒤로</button>
+        <h2 style={{ fontSize: 18, fontWeight: 600 }}>📋 텍스트 변환기</h2>
+      </div>
+
+      <div style={{ background: "var(--acc-d)", border: "1.5px solid var(--acc-b)", borderRadius: "var(--rs)", padding: "10px 14px", marginBottom: 18, fontSize: 13, color: "var(--t2)", lineHeight: 1.8 }}>
+        OCR로 찍은 텍스트, 교재 내용 등을 붙여넣으면<br />
+        <strong style={{ color: "var(--acc)" }}>AI가 자동으로 암기 세트 형식</strong>으로 변환해드려요.
+      </div>
+
+      <Field label="변환 타입">
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 4 }}>
+          {[["recall", "📝", "리콜", "단어 목록만"],["flashcard", "🃏", "플래시카드", "단어 + 정의"]].map(([v, icon, name, desc]) => (
+            <button key={v} onClick={() => { setType(v); setResult(null); }} style={{ padding: 12, borderRadius: "var(--rs)", border: `2px solid ${type === v ? "var(--acc)" : "var(--bdr)"}`, background: type === v ? "var(--acc-d)" : "var(--card)", color: type === v ? "var(--acc)" : "var(--t2)", cursor: "pointer", fontFamily: "inherit", textAlign: "left", transition: "all .15s" }}>
+              <span style={{ fontSize: 18 }}>{icon}</span>
+              <span style={{ fontSize: 13, fontWeight: 600, marginLeft: 6 }}>{name}</span>
+              <span style={{ fontSize: 12, opacity: 0.7, marginLeft: 4 }}>— {desc}</span>
+            </button>
+          ))}
+        </div>
+      </Field>
+
+      <Field label="원본 텍스트 붙여넣기">
+        <textarea style={{ ...inp, resize: "vertical", minHeight: 160, lineHeight: 1.8, display: "block" }}
+          placeholder={"OCR 텍스트, 교재 내용, 메모 등을 자유롭게 붙여넣으세요.\n\n예:\n수은 - 중금속, 신경 독성\n납 - 중금속, 혈액 독성\n포름알데히드 - 발암물질"}
+          value={rawText} onChange={(e) => { setRawText(e.target.value); setResult(null); }} />
+      </Field>
+
+      <button onClick={convert} disabled={!rawText.trim() || loading}
+        style={{ ...btnP, width: "100%", padding: 13, fontSize: 15, marginBottom: 16, opacity: (!rawText.trim() || loading) ? 0.4 : 1 }}>
+        {loading ? "🤖 AI 변환 중..." : "변환하기"}
+      </button>
+
+      {error && <div style={{ padding: "12px 14px", background: "var(--err-d)", border: "1.5px solid var(--err-b)", borderRadius: "var(--rs)", color: "var(--err)", fontSize: 13, marginBottom: 16 }}>{error}</div>}
+
+      {result && (
+        <div className="fu">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <Label>변환 결과 ({result.items.length}개)</Label>
+            {result.corrections?.length > 0 && (
+              <span style={{ fontSize: 12, color: "var(--acc)" }}>교정 {result.corrections.length}건</span>
+            )}
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 14, maxHeight: 240, overflowY: "auto" }}>
+            {result.items.map((item, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "var(--surf)", borderRadius: "var(--rs)", padding: "9px 12px", border: "1.5px solid var(--bdr)" }}>
+                <span style={{ fontSize: 11, color: "var(--t3)", minWidth: 18, fontWeight: 700, paddingTop: 2 }}>{i + 1}</span>
+                <span style={{ fontSize: 13, flex: 1 }}>{item.term}</span>
+                {item.definition && <span style={{ fontSize: 12, color: "var(--t2)", maxWidth: "45%", textAlign: "right" }}>{item.definition}</span>}
+              </div>
+            ))}
+          </div>
+
+          {result.corrections?.length > 0 && (
+            <div style={{ background: "var(--acc-d)", border: "1.5px solid var(--acc-b)", borderRadius: "var(--rs)", padding: "10px 14px", marginBottom: 14 }}>
+              <div style={{ fontSize: 11, color: "var(--acc)", fontWeight: 700, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>교정 목록</div>
+              {result.corrections.map((c, i) => (
+                <div key={i} style={{ fontSize: 12, color: "var(--t2)", lineHeight: 1.9 }}>
+                  <span style={{ color: "var(--err)" }}>{c.from}</span> → <span style={{ color: "var(--ok)" }}>{c.to}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <button onClick={doImport} style={{ ...btnP, width: "100%", padding: 13, fontSize: 15 }}>
+            이 항목들로 세트 만들기 →
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
 // CREATE SCREEN
 // ============================================================
-function CreateScreen({ onSave, onBack }) {
+function CreateScreen({ onSave, onBack, prefill }) {
   const [title, setTitle] = useState("");
-  const [type, setType] = useState("recall");
+  const [type, setType] = useState(prefill?.type || "recall");
   const [method, setMethod] = useState("direct");
-  const [items, setItems] = useState([]);
+  const [items, setItems] = useState(prefill?.items || []);
   const [term, setTerm] = useState("");
   const [def, setDef] = useState("");
   const [paste, setPaste] = useState("");
@@ -209,22 +369,9 @@ function CreateScreen({ onSave, onBack }) {
     termRef.current?.focus();
   };
   const addPaste = () => {
-    if (type === "flashcard") {
-      const lines = paste.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
-      if (!lines.length) return;
-      const newItems = lines.map((line) => {
-        const dashIdx = line.indexOf(" - ");
-        if (dashIdx !== -1) return { id: uid(), term: line.slice(0, dashIdx).trim(), definition: line.slice(dashIdx + 3).trim() };
-        const simpleDash = line.indexOf("-");
-        if (simpleDash > 0) return { id: uid(), term: line.slice(0, simpleDash).trim(), definition: line.slice(simpleDash + 1).trim() };
-        return { id: uid(), term: line, definition: "" };
-      });
-      setItems((p) => [...p, ...newItems]);
-    } else {
-      const terms = paste.split(/[,.\n]/).map((s) => s.trim()).filter(Boolean);
-      if (!terms.length) return;
-      setItems((p) => [...p, ...terms.map((t) => ({ id: uid(), term: t, definition: "" }))]);
-    }
+    const terms = paste.split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
+    if (!terms.length) return;
+    setItems((p) => [...p, ...terms.map((t) => ({ id: uid(), term: t, definition: "" }))]);
     setPaste("");
   };
   const save = async () => {
@@ -281,9 +428,7 @@ function CreateScreen({ onSave, onBack }) {
       {method === "paste" && (
         <div style={{ marginBottom: 16 }}>
           <textarea style={{ ...inp, resize: "vertical", minHeight: 100, lineHeight: 1.7, display: "block", marginBottom: 8 }}
-            placeholder={type === "flashcard"
-              ? "단어 - 정의 형식으로 입력 (쉼표 또는 줄바꿈으로 구분)\n예:\n수은 - 독성 중금속\n납 - 중금속\n비소 - 독성 원소"
-              : "쉼표, 마침표 또는 줄바꿈으로 구분\n예: 수은, 납. 비소\n크롬, 포름알데히드"}
+            placeholder={"쉼표 또는 줄바꿈으로 구분해서 붙여넣기\n예: 수은, 납, 비소, 크롬, 포름알데히드"}
             value={paste} onChange={(e) => setPaste(e.target.value)} />
           <button style={{ ...btnG, width: "100%" }} onClick={addPaste}>항목으로 추가하기</button>
         </div>
@@ -324,42 +469,10 @@ function CreateScreen({ onSave, onBack }) {
 // ============================================================
 // DETAIL SCREEN
 // ============================================================
-function DetailScreen({ set, onBack, onDelete, onStartRecall, onStartFlash, onUpdateSet }) {
+function DetailScreen({ set, onBack, onDelete, onStartRecall, onStartFlash }) {
   const [showM, setShowM] = useState(false);
   const [chunkIdx, setChunkIdx] = useState(null);
-  const [editMode, setEditMode] = useState(false);
-  const [editItems, setEditItems] = useState(set.items);
-  const [newTerm, setNewTerm] = useState("");
-  const [newDef, setNewDef] = useState("");
-  const [copied, setCopied] = useState(false);
   const m = set.mnemonics;
-
-  const shareSet = async () => {
-    const content = set.type === "flashcard"
-      ? set.items.map((i) => i.definition ? `${i.term} - ${i.definition}` : i.term).join("\n")
-      : set.items.map((i) => i.term).join(", ");
-    const text = `${set.title}\n\n${content}`;
-    if (navigator.share) {
-      try { await navigator.share({ title: set.title, text }); } catch {}
-    } else {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
-
-  const saveItemEdits = () => {
-    const filtered = editItems.filter((it) => it.term.trim());
-    onUpdateSet({ ...set, items: filtered });
-    setEditMode(false);
-  };
-
-  const addNewItem = () => {
-    if (!newTerm.trim()) return;
-    setEditItems((p) => [...p, { id: uid(), term: newTerm.trim(), definition: newDef.trim() }]);
-    setNewTerm("");
-    setNewDef("");
-  };
 
   return (
     <div className="fu">
@@ -372,9 +485,6 @@ function DetailScreen({ set, onBack, onDelete, onStartRecall, onStartFlash, onUp
             <Tag>{set.items.length}개</Tag>
           </div>
         </div>
-        <button style={{ ...btnG, padding: "8px 14px", fontSize: 13 }} onClick={shareSet}>
-          {copied ? "✓ 복사됨" : "🔗 공유"}
-        </button>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
@@ -426,57 +536,18 @@ function DetailScreen({ set, onBack, onDelete, onStartRecall, onStartFlash, onUp
         </div>
       )}
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        <Label>항목 목록</Label>
-        {!editMode
-          ? <button style={{ ...btnG, padding: "4px 12px", fontSize: 12 }} onClick={() => { setEditItems(set.items); setEditMode(true); }}>✏️ 편집</button>
-          : <div style={{ display: "flex", gap: 6 }}>
-              <button style={{ ...btnG, padding: "4px 12px", fontSize: 12 }} onClick={() => setEditMode(false)}>취소</button>
-              <button style={{ ...btnP, padding: "4px 12px", fontSize: 12 }} onClick={saveItemEdits}>저장</button>
-            </div>
-        }
+      <Label>항목 목록</Label>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 24 }}>
+        {set.items.map((item, i) => (
+          <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surf)", borderRadius: "var(--rs)", padding: "10px 14px", border: "1.5px solid var(--bdr)" }}>
+            <span style={{ fontSize: 11, color: "var(--t3)", minWidth: 18, fontWeight: 700 }}>{i + 1}</span>
+            <span style={{ flex: 1, fontSize: 14 }}>{item.term}</span>
+            {item.definition && <span style={{ fontSize: 13, color: "var(--t2)" }}>{item.definition}</span>}
+          </div>
+        ))}
       </div>
 
-      {!editMode ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 24 }}>
-          {set.items.map((item, i) => (
-            <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surf)", borderRadius: "var(--rs)", padding: "10px 14px", border: "1.5px solid var(--bdr)" }}>
-              <span style={{ fontSize: 11, color: "var(--t3)", minWidth: 18, fontWeight: 700 }}>{i + 1}</span>
-              <span style={{ flex: 1, fontSize: 14 }}>{item.term}</span>
-              {item.definition && <span style={{ fontSize: 13, color: "var(--t2)" }}>{item.definition}</span>}
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
-          {editItems.map((item, i) => (
-            <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--surf)", borderRadius: "var(--rs)", padding: "8px 10px", border: "1.5px solid var(--bdr)" }}>
-              <span style={{ fontSize: 11, color: "var(--t3)", minWidth: 18, fontWeight: 700 }}>{i + 1}</span>
-              <input style={{ ...inp, flex: 1, padding: "6px 8px", fontSize: 13 }} value={item.term}
-                onChange={(e) => setEditItems((p) => p.map((it) => it.id === item.id ? { ...it, term: e.target.value } : it))} />
-              {set.type === "flashcard" && (
-                <input style={{ ...inp, flex: 1, padding: "6px 8px", fontSize: 13 }} value={item.definition} placeholder="정의"
-                  onChange={(e) => setEditItems((p) => p.map((it) => it.id === item.id ? { ...it, definition: e.target.value } : it))} />
-              )}
-              <button onClick={() => setEditItems((p) => p.filter((it) => it.id !== item.id))}
-                style={{ background: "none", border: "none", color: "var(--err)", cursor: "pointer", fontSize: 16, padding: 4 }}>✕</button>
-            </div>
-          ))}
-          <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
-            <input style={{ ...inp, flex: 1, padding: "8px 10px", fontSize: 13 }} value={newTerm}
-              onChange={(e) => setNewTerm(e.target.value)} placeholder="새 항목"
-              onKeyDown={(e) => { if (e.key === "Enter") addNewItem(); }} />
-            {set.type === "flashcard" && (
-              <input style={{ ...inp, flex: 1, padding: "8px 10px", fontSize: 13 }} value={newDef}
-                onChange={(e) => setNewDef(e.target.value)} placeholder="정의"
-                onKeyDown={(e) => { if (e.key === "Enter") addNewItem(); }} />
-            )}
-            <button style={{ ...btnG, padding: "8px 12px", fontSize: 14 }} onClick={addNewItem}>+</button>
-          </div>
-        </div>
-      )}
-
-      <button onClick={() => onDelete(set.id)} style={{ width: "100%", padding: 12, background: "var(--err-d)", border: "1.5px solid var(--err-b)", borderRadius: "var(--rs)", color: "var(--err)", cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 500, marginTop: editMode ? 8 : 0 }}>
+      <button onClick={() => onDelete(set.id)} style={{ width: "100%", padding: 12, background: "var(--err-d)", border: "1.5px solid var(--err-b)", borderRadius: "var(--rs)", color: "var(--err)", cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 500 }}>
         세트 삭제
       </button>
     </div>
@@ -709,6 +780,7 @@ export default function App() {
   const [sets, setSets] = useState(loadSets);
   const [screen, setScreen] = useState("home");
   const [current, setCurrent] = useState(null);
+  const [prefill, setPrefill] = useState(null);
 
   useEffect(() => {
     const el = document.createElement("style");
@@ -723,16 +795,19 @@ export default function App() {
   const openSet = (s) => { setCurrent(s); setScreen("detail"); };
   const addSet = (s) => { setSets((p) => [s, ...p]); setCurrent(s); setScreen("detail"); };
   const deleteSet = (id) => { setSets((p) => p.filter((s) => s.id !== id)); goHome(); };
-  const updateSet = (s) => { setSets((p) => p.map((x) => x.id === s.id ? s : x)); setCurrent(s); };
+  const handleConverterImport = (items, type) => {
+    setPrefill({ items, type });
+    setScreen("create");
+  };
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)", maxWidth: 480, margin: "0 auto", padding: "28px 18px 64px" }}>
-      {screen === "home" && <HomeScreen sets={sets} onOpen={openSet} onCreate={() => setScreen("create")} />}
-      {screen === "create" && <CreateScreen onSave={addSet} onBack={goHome} />}
+      {screen === "home" && <HomeScreen sets={sets} onOpen={openSet} onCreate={() => { setPrefill(null); setScreen("create"); }} onConvert={() => setScreen("converter")} />}
+      {screen === "converter" && <ConverterScreen onImport={handleConverterImport} onBack={goHome} />}
+      {screen === "create" && <CreateScreen prefill={prefill} onSave={addSet} onBack={goHome} />}
       {screen === "detail" && current && (
         <DetailScreen set={current} onBack={goHome} onDelete={deleteSet}
-          onStartRecall={() => setScreen("recall")} onStartFlash={() => setScreen("flashcard")}
-          onUpdateSet={updateSet} />
+          onStartRecall={() => setScreen("recall")} onStartFlash={() => setScreen("flashcard")} />
       )}
       {screen === "recall" && current && <RecallScreen set={current} onBack={() => setScreen("detail")} />}
       {screen === "flashcard" && current && <FlashcardScreen set={current} onBack={() => setScreen("detail")} />}
