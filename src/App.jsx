@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 
 // === STORAGE ===
 function loadSets() {
@@ -51,6 +51,9 @@ const shuffleArray = (arr) => {
   return a;
 };
 
+// normalize: strip whitespace + lowercase for fuzzy matching
+const normalize = (s) => s.replace(/\s+/g, "").toLowerCase();
+
 // === GLOBAL STYLES ===
 const STYLES = `
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -95,8 +98,15 @@ const STYLES = `
     80%  { opacity: 1; }
     100% { opacity: .5; transform: scale(.97); }
   }
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20%  { transform: translateX(-6px); }
+    50%  { transform: translateX(6px); }
+    80%  { transform: translateX(-4px); }
+  }
   .fu { animation: fadeUp .24s ease; }
   .fp { animation: flashPop 1s ease forwards; }
+  .shake { animation: shake .35s ease; }
 `;
 
 // === SHARED STYLE OBJECTS ===
@@ -141,11 +151,9 @@ const Field = ({ label, children, mb = 18 }) => (
 );
 const ProgBar = ({ pct, color = "var(--acc)" }) => (
   <div style={{ height: 3, background: "var(--bdr)", borderRadius: 2 }}>
-    <div style={{ height: "100%", background: color, borderRadius: 2, width: `${pct}%`, transition: "width .25s" }} />
+    <div style={{ height: "100%", background: color, borderRadius: 2, width: `${pct}%`, transition: "width .4s" }} />
   </div>
 );
-
-// iOS-style toggle switch
 const ToggleSwitch = ({ on, onToggle }) => (
   <button
     onClick={onToggle}
@@ -280,15 +288,10 @@ function ConverterScreen({ onImport, onBack }) {
 
   const convert = async () => {
     if (!rawText.trim()) return;
-    setLoading(true);
-    setError("");
-    setResult(null);
+    setLoading(true); setError(""); setResult(null);
     const res = await convertTextToItems(rawText, type);
-    if (!res) {
-      setError("변환 실패. API 키를 확인해주세요.");
-    } else {
-      setResult(res);
-    }
+    if (!res) setError("변환 실패. API 키를 확인해주세요.");
+    else setResult(res);
     setLoading(false);
   };
 
@@ -303,12 +306,10 @@ function ConverterScreen({ onImport, onBack }) {
         <button style={btnG} onClick={onBack}>← 뒤로</button>
         <h2 style={{ fontSize: 18, fontWeight: 600 }}>📋 텍스트 변환기</h2>
       </div>
-
       <div style={{ background: "var(--acc-d)", border: "1.5px solid var(--acc-b)", borderRadius: "var(--rs)", padding: "10px 14px", marginBottom: 18, fontSize: 13, color: "var(--t2)", lineHeight: 1.8 }}>
         OCR로 찍은 텍스트, 교재 내용 등을 붙여넣으면<br />
         <strong style={{ color: "var(--acc)" }}>AI가 자동으로 암기 세트 형식</strong>으로 변환해드려요.
       </div>
-
       <Field label="변환 타입">
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 4 }}>
           {[["recall", "📝", "리콜", "단어 목록만"],["flashcard", "🃏", "플래시카드", "단어 + 정의"]].map(([v, icon, name, desc]) => (
@@ -320,29 +321,22 @@ function ConverterScreen({ onImport, onBack }) {
           ))}
         </div>
       </Field>
-
       <Field label="원본 텍스트 붙여넣기">
         <textarea style={{ ...inp, resize: "vertical", minHeight: 160, lineHeight: 1.8, display: "block" }}
           placeholder={"OCR 텍스트, 교재 내용, 메모 등을 자유롭게 붙여넣으세요.\n\n예:\n수은 - 중금속, 신경 독성\n납 - 중금속, 혈액 독성\n포름알데히드 - 발암물질"}
           value={rawText} onChange={(e) => { setRawText(e.target.value); setResult(null); }} />
       </Field>
-
       <button onClick={convert} disabled={!rawText.trim() || loading}
         style={{ ...btnP, width: "100%", padding: 13, fontSize: 15, marginBottom: 16, opacity: (!rawText.trim() || loading) ? 0.4 : 1 }}>
         {loading ? "🤖 AI 변환 중..." : "변환하기"}
       </button>
-
       {error && <div style={{ padding: "12px 14px", background: "var(--err-d)", border: "1.5px solid var(--err-b)", borderRadius: "var(--rs)", color: "var(--err)", fontSize: 13, marginBottom: 16 }}>{error}</div>}
-
       {result && (
         <div className="fu">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
             <Label>변환 결과 ({result.items.length}개)</Label>
-            {result.corrections?.length > 0 && (
-              <span style={{ fontSize: 12, color: "var(--acc)" }}>교정 {result.corrections.length}건</span>
-            )}
+            {result.corrections?.length > 0 && <span style={{ fontSize: 12, color: "var(--acc)" }}>교정 {result.corrections.length}건</span>}
           </div>
-
           <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 14, maxHeight: 240, overflowY: "auto" }}>
             {result.items.map((item, i) => (
               <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "var(--surf)", borderRadius: "var(--rs)", padding: "9px 12px", border: "1.5px solid var(--bdr)" }}>
@@ -352,7 +346,6 @@ function ConverterScreen({ onImport, onBack }) {
               </div>
             ))}
           </div>
-
           {result.corrections?.length > 0 && (
             <div style={{ background: "var(--acc-d)", border: "1.5px solid var(--acc-b)", borderRadius: "var(--rs)", padding: "10px 14px", marginBottom: 14 }}>
               <div style={{ fontSize: 11, color: "var(--acc)", fontWeight: 700, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>교정 목록</div>
@@ -363,7 +356,6 @@ function ConverterScreen({ onImport, onBack }) {
               ))}
             </div>
           )}
-
           <button onClick={doImport} style={{ ...btnP, width: "100%", padding: 13, fontSize: 15 }}>
             이 항목들로 세트 만들기 →
           </button>
@@ -388,7 +380,6 @@ function CreateScreen({ onSave, onBack, prefill, editSet, onUpdate }) {
   const [def, setDef] = useState("");
   const [paste, setPaste] = useState("");
   const [loading, setLoading] = useState(false);
-  // inline item editing
   const [editingId, setEditingId] = useState(null);
   const [editTerm, setEditTerm] = useState("");
   const [editDef, setEditDef] = useState("");
@@ -397,20 +388,18 @@ function CreateScreen({ onSave, onBack, prefill, editSet, onUpdate }) {
   const addItem = () => {
     if (!term.trim()) return;
     setItems((p) => [...p, { id: uid(), term: term.trim(), definition: def.trim() }]);
-    setTerm("");
-    setDef("");
+    setTerm(""); setDef("");
     termRef.current?.focus();
   };
   const addPaste = () => {
     if (type === "flashcard") {
       const lines = paste.split(/\n/).map((s) => s.trim()).filter(Boolean);
       if (!lines.length) return;
-      const newItems = lines.map((line) => {
+      setItems((p) => [...p, ...lines.map((line) => {
         const dashIdx = line.indexOf("-");
         if (dashIdx !== -1) return { id: uid(), term: line.slice(0, dashIdx).trim(), definition: line.slice(dashIdx + 1).trim() };
         return { id: uid(), term: line, definition: "" };
-      });
-      setItems((p) => [...p, ...newItems]);
+      })]);
     } else {
       const terms = paste.split(/[,.\n]/).map((s) => s.trim()).filter(Boolean);
       if (!terms.length) return;
@@ -418,27 +407,18 @@ function CreateScreen({ onSave, onBack, prefill, editSet, onUpdate }) {
     }
     setPaste("");
   };
-
-  const startItemEdit = (item) => {
-    setEditingId(item.id);
-    setEditTerm(item.term);
-    setEditDef(item.definition || "");
-  };
+  const startItemEdit = (item) => { setEditingId(item.id); setEditTerm(item.term); setEditDef(item.definition || ""); };
   const saveItemEdit = (id) => {
     if (!editTerm.trim()) return;
     setItems((p) => p.map((it) => it.id === id ? { ...it, term: editTerm.trim(), definition: editDef.trim() } : it));
     setEditingId(null);
   };
-
   const save = async () => {
     if (!title.trim() || !items.length) return;
     setLoading(true);
     const mnemonics = await generateMnemonics(title, items.map((i) => i.term));
-    if (isEdit) {
-      onUpdate({ ...editSet, title: title.trim(), type, items, mnemonics });
-    } else {
-      onSave({ id: uid(), title: title.trim(), type, items, mnemonics, createdAt: Date.now() });
-    }
+    if (isEdit) onUpdate({ ...editSet, title: title.trim(), type, items, mnemonics });
+    else onSave({ id: uid(), title: title.trim(), type, items, mnemonics, createdAt: Date.now() });
   };
 
   return (
@@ -447,11 +427,9 @@ function CreateScreen({ onSave, onBack, prefill, editSet, onUpdate }) {
         <button style={btnG} onClick={onBack}>← 뒤로</button>
         <h2 style={{ fontSize: 18, fontWeight: 600 }}>{isEdit ? "세트 편집" : "새 세트 만들기"}</h2>
       </div>
-
       <Field label="세트 제목">
         <input style={inp} placeholder="예: 화장품 사용 금지 원료 25가지" value={title} onChange={(e) => setTitle(e.target.value)} />
       </Field>
-
       <Field label="학습 방식">
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           {[["recall", "📝", "리콜", "단어만 암기"], ["flashcard", "🃏", "플래시카드", "단어 + 뜻"]].map(([v, icon, name, desc]) => (
@@ -463,7 +441,6 @@ function CreateScreen({ onSave, onBack, prefill, editSet, onUpdate }) {
           ))}
         </div>
       </Field>
-
       <Field label="항목 추가" mb={16}>
         <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
           {[["direct", "직접 입력"], ["paste", "붙여넣기"], ["ocr", "📷 OCR"]].map(([v, label]) => (
@@ -472,7 +449,6 @@ function CreateScreen({ onSave, onBack, prefill, editSet, onUpdate }) {
             </button>
           ))}
         </div>
-
         {method === "direct" && (
           <div>
             <input ref={termRef} style={{ ...inp, marginBottom: 8 }} placeholder={type === "flashcard" ? "단어/용어" : "단어 (Enter로 추가)"} value={term} onChange={(e) => setTerm(e.target.value)}
@@ -483,18 +459,14 @@ function CreateScreen({ onSave, onBack, prefill, editSet, onUpdate }) {
             <button style={{ ...btnG, width: "100%" }} onClick={addItem}>+ 항목 추가</button>
           </div>
         )}
-
         {method === "paste" && (
           <div>
             <textarea style={{ ...inp, resize: "vertical", minHeight: 100, lineHeight: 1.7, display: "block", marginBottom: 8 }}
-              placeholder={type === "flashcard"
-                ? "단어-정의 형식으로 입력 (줄바꿈으로 구분)\n예:\n수은-독성 중금속\n납-중금속\n비소-독성 원소"
-                : "쉼표, 마침표, 줄바꿈으로 구분\n예: 수은, 납. 비소\n크롬, 포름알데히드"}
+              placeholder={type === "flashcard" ? "단어-정의 형식으로 입력 (줄바꿈으로 구분)\n예:\n수은-독성 중금속\n납-중금속" : "쉼표, 마침표, 줄바꿈으로 구분\n예: 수은, 납. 비소\n크롬, 포름알데히드"}
               value={paste} onChange={(e) => setPaste(e.target.value)} />
             <button style={{ ...btnG, width: "100%" }} onClick={addPaste}>항목으로 추가하기</button>
           </div>
         )}
-
         {method === "ocr" && (
           <div style={{ background: "var(--card)", border: "2px dashed var(--bdr)", borderRadius: "var(--r)", padding: 36, textAlign: "center" }}>
             <div style={{ fontSize: 36, marginBottom: 12 }}>📷</div>
@@ -503,29 +475,18 @@ function CreateScreen({ onSave, onBack, prefill, editSet, onUpdate }) {
           </div>
         )}
       </Field>
-
       {items.length > 0 && (
         <div style={{ marginBottom: 20 }}>
-          <Label>항목 {items.length}개 {isEdit && <span style={{ color: "var(--t3)", fontWeight: 400 }}>— 항목을 클릭해 수정</span>}</Label>
+          <Label>항목 {items.length}개 {isEdit && <span style={{ color: "var(--t3)", fontWeight: 400 }}>— ✏ 클릭해 수정</span>}</Label>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {items.map((item, i) => (
               editingId === item.id ? (
                 <div key={item.id} className="fu" style={{ background: "var(--card)", borderRadius: "var(--rs)", padding: "10px 12px", border: "1.5px solid var(--acc-b)" }}>
-                  <input
-                    style={{ ...inp, marginBottom: 6, fontSize: 13 }}
-                    value={editTerm}
-                    onChange={(e) => setEditTerm(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") saveItemEdit(item.id); if (e.key === "Escape") setEditingId(null); }}
-                    autoFocus
-                  />
+                  <input style={{ ...inp, marginBottom: 6, fontSize: 13 }} value={editTerm} onChange={(e) => setEditTerm(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") saveItemEdit(item.id); if (e.key === "Escape") setEditingId(null); }} autoFocus />
                   {(type === "flashcard" || item.definition) && (
-                    <input
-                      style={{ ...inp, marginBottom: 8, fontSize: 13 }}
-                      placeholder="정의 (선택)"
-                      value={editDef}
-                      onChange={(e) => setEditDef(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter") saveItemEdit(item.id); if (e.key === "Escape") setEditingId(null); }}
-                    />
+                    <input style={{ ...inp, marginBottom: 8, fontSize: 13 }} placeholder="정의 (선택)" value={editDef} onChange={(e) => setEditDef(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") saveItemEdit(item.id); if (e.key === "Escape") setEditingId(null); }} />
                   )}
                   <div style={{ display: "flex", gap: 6 }}>
                     <button onClick={() => saveItemEdit(item.id)} style={{ ...btnP, flex: 1, padding: "7px 0", fontSize: 13 }}>저장</button>
@@ -537,30 +498,17 @@ function CreateScreen({ onSave, onBack, prefill, editSet, onUpdate }) {
                   <span style={{ fontSize: 11, color: "var(--t3)", minWidth: 20, fontWeight: 700 }}>{i + 1}</span>
                   <span style={{ flex: 1, fontSize: 14 }}>{item.term}</span>
                   {item.definition && <span style={{ fontSize: 13, color: "var(--t2)" }}>— {item.definition}</span>}
-                  <button
-                    onClick={() => startItemEdit(item)}
-                    style={{ background: "none", border: "none", color: "var(--t2)", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "2px 4px" }}
-                    title="수정"
-                  >✏</button>
-                  <button
-                    onClick={() => setItems((p) => p.filter((x) => x.id !== item.id))}
-                    style={{ background: "none", border: "none", color: "var(--t3)", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: "2px 4px" }}
-                    title="삭제"
-                  >✕</button>
+                  <button onClick={() => startItemEdit(item)} style={{ background: "none", border: "none", color: "var(--t2)", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "2px 4px" }}>✏</button>
+                  <button onClick={() => setItems((p) => p.filter((x) => x.id !== item.id))} style={{ background: "none", border: "none", color: "var(--t3)", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: "2px 4px" }}>✕</button>
                 </div>
               )
             ))}
           </div>
         </div>
       )}
-
       <button onClick={save} disabled={!title.trim() || !items.length || loading}
         style={{ ...btnP, width: "100%", padding: 14, fontSize: 15, opacity: (!title.trim() || !items.length || loading) ? 0.4 : 1 }}>
-        {loading
-          ? "🤖 AI 암기법 생성 중..."
-          : isEdit
-            ? `저장 & 암기법 재생성 (${items.length}개 항목)`
-            : `저장 & 암기법 생성 (${items.length}개 항목)`}
+        {loading ? "🤖 AI 암기법 생성 중..." : isEdit ? `저장 & 암기법 재생성 (${items.length}개 항목)` : `저장 & 암기법 생성 (${items.length}개 항목)`}
       </button>
     </div>
   );
@@ -569,10 +517,17 @@ function CreateScreen({ onSave, onBack, prefill, editSet, onUpdate }) {
 // ============================================================
 // DETAIL SCREEN
 // ============================================================
-function DetailScreen({ set, onBack, onDelete, onStartRecall, onStartFlash, onEdit, shuffle, onToggleShuffle }) {
+function DetailScreen({ set, onBack, onDelete, onStartRecall, onStartFlash, onEdit, opts, onToggle }) {
   const [showM, setShowM] = useState(false);
   const [chunkIdx, setChunkIdx] = useState(null);
+  const [showOpts, setShowOpts] = useState(false);
   const m = set.mnemonics;
+
+  const optRows = [
+    { key: "shuffle",     icon: "🔀", label: "순서 랜덤",   desc: opts.shuffle ? "켜짐 — 무작위 순서로 진행" : "꺼짐 — 원래 순서 유지" },
+    { key: "reverseCard", icon: "⇄",  label: "뒤집기",      desc: opts.reverseCard ? "켜짐 — 정의→단어 순서로" : "꺼짐 — 단어→정의 순서로" },
+    { key: "retryAll",    icon: "🔁", label: "재시도 범위", desc: opts.retryAll ? "켜짐 — 전체 다시 맞추기" : "꺼짐 — 틀린것만 다시 맞추기" },
+  ];
 
   return (
     <div className="fu">
@@ -588,25 +543,53 @@ function DetailScreen({ set, onBack, onDelete, onStartRecall, onStartFlash, onEd
         <button style={{ ...btnG, padding: "8px 12px", fontSize: 13 }} onClick={onEdit}>✏ 편집</button>
       </div>
 
-      {/* Shuffle toggle */}
-      <div style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "11px 14px", background: "var(--card)",
-        borderRadius: "var(--rs)", border: `1.5px solid ${shuffle ? "var(--acc-b)" : "var(--bdr)"}`,
-        marginBottom: 10, transition: "border-color .2s",
-      }}>
-        <div>
-          <span style={{ fontSize: 13, color: shuffle ? "var(--acc)" : "var(--t1)", fontWeight: 500 }}>🔀 순서 랜덤</span>
-          <span style={{ fontSize: 12, color: "var(--t3)", marginLeft: 8 }}>
-            {shuffle ? "켜짐 — 섞인 순서로 진행" : "꺼짐 — 원래 순서로 진행"}
-          </span>
-        </div>
-        <ToggleSwitch on={shuffle} onToggle={onToggleShuffle} />
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
         <button style={{ ...btnP, padding: 14 }} onClick={onStartRecall}>📝 리콜 시작</button>
         <button style={{ ...btnG, padding: 14 }} onClick={onStartFlash}>🃏 플래시카드</button>
+      </div>
+
+      {/* Options accordion */}
+      <div style={{ marginBottom: 20 }}>
+        <button
+          onClick={() => setShowOpts((s) => !s)}
+          style={{
+            width: "100%", padding: "10px 14px",
+            background: showOpts ? "var(--surf)" : "var(--card)",
+            border: `1.5px solid ${showOpts ? "var(--acc-b)" : "var(--bdr)"}`,
+            borderRadius: showOpts ? "var(--rs) var(--rs) 0 0" : "var(--rs)",
+            color: showOpts ? "var(--acc)" : "var(--t2)",
+            cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 500,
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            transition: "all .15s",
+          }}
+        >
+          <span>
+            ⚙ 옵션
+            {(opts.shuffle || opts.reverseCard || opts.retryAll) && (
+              <span style={{ marginLeft: 8, fontSize: 11, color: "var(--acc)", background: "var(--acc-d)", border: "1px solid var(--acc-b)", borderRadius: 10, padding: "1px 7px" }}>
+                {[opts.shuffle && "랜덤", opts.reverseCard && "뒤집기", opts.retryAll && "전체재시도"].filter(Boolean).join(" · ")}
+              </span>
+            )}
+          </span>
+          <span style={{ fontSize: 10 }}>{showOpts ? "▲" : "▼"}</span>
+        </button>
+        {showOpts && (
+          <div className="fu" style={{ border: "1.5px solid var(--acc-b)", borderTop: "none", borderRadius: "0 0 var(--rs) var(--rs)", overflow: "hidden" }}>
+            {optRows.map(({ key, icon, label, desc }, i) => (
+              <div key={key} style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                padding: "11px 14px", background: "var(--surf)",
+                borderTop: i > 0 ? "1px solid var(--bdr)" : "none",
+              }}>
+                <div>
+                  <span style={{ fontSize: 13, color: opts[key] ? "var(--acc)" : "var(--t1)", fontWeight: 500 }}>{icon} {label}</span>
+                  <div style={{ fontSize: 11, color: "var(--t3)", marginTop: 2 }}>{desc}</div>
+                </div>
+                <ToggleSwitch on={opts[key]} onToggle={() => onToggle(key)} />
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {m && (
@@ -636,18 +619,8 @@ function DetailScreen({ set, onBack, onDelete, onStartRecall, onStartFlash, onEd
                   )}
                 </div>
               )}
-              {m.acronym && (
-                <div style={cardS}>
-                  <Label>🔤 두문자어</Label>
-                  <p style={{ fontSize: 14, lineHeight: 1.9, color: "var(--t2)" }}>{m.acronym}</p>
-                </div>
-              )}
-              {m.story && (
-                <div style={cardS}>
-                  <Label>📖 스토리</Label>
-                  <p style={{ fontSize: 14, lineHeight: 1.9, color: "var(--t2)" }}>{m.story}</p>
-                </div>
-              )}
+              {m.acronym && <div style={cardS}><Label>🔤 두문자어</Label><p style={{ fontSize: 14, lineHeight: 1.9, color: "var(--t2)" }}>{m.acronym}</p></div>}
+              {m.story && <div style={cardS}><Label>📖 스토리</Label><p style={{ fontSize: 14, lineHeight: 1.9, color: "var(--t2)" }}>{m.story}</p></div>}
             </div>
           )}
         </div>
@@ -672,118 +645,70 @@ function DetailScreen({ set, onBack, onDelete, onStartRecall, onStartFlash, onEd
 }
 
 // ============================================================
-// RECALL SCREEN
+// RECALL SCREEN  —  단어 맞추기 게임
 // ============================================================
-function RecallScreen({ set, onBack, shuffle }) {
-  const [phase, setPhase] = useState("ready");
-  const [flashItems, setFlashItems] = useState([]);
-  const [flashIdx, setFlashIdx] = useState(0);
-  const [userInput, setUserInput] = useState("");
-  const [results, setResults] = useState([]);
+function RecallScreen({ set, onBack, shuffle, retryAll }) {
   const [round, setRound] = useState(1);
-  const timer = useRef();
+  const [roundItems, setRoundItems] = useState(() =>
+    shuffle ? shuffleArray([...set.items]) : [...set.items]
+  );
+  const [guessed, setGuessed] = useState(new Set());
+  const [input, setInput] = useState("");
+  const [phase, setPhase] = useState("play"); // "play" | "result"
+  const [shake, setShake] = useState(false);
+  const inputRef = useRef();
 
-  const startFlash = useCallback((items) => {
-    const ordered = shuffle ? shuffleArray([...items]) : [...items];
-    setFlashItems(ordered);
-    setFlashIdx(0);
-    setPhase("flash");
-  }, [shuffle]);
-
+  // Auto-finish when all guessed
   useEffect(() => {
-    if (phase !== "flash") return;
-    if (flashIdx >= flashItems.length) { setPhase("write"); setUserInput(""); return; }
-    timer.current = setTimeout(() => setFlashIdx((i) => i + 1), 1000);
-    return () => clearTimeout(timer.current);
-  }, [phase, flashIdx, flashItems]);
+    if (roundItems.length > 0 && guessed.size === roundItems.length) {
+      const t = setTimeout(() => setPhase("result"), 500);
+      return () => clearTimeout(t);
+    }
+  }, [guessed.size, roundItems.length]);
 
-  const submit = () => {
-    const answers = userInput.split("\n").map((s) => s.trim().toLowerCase()).filter(Boolean);
-    const res = set.items.map((item) => ({
-      term: item.term,
-      correct: answers.includes(item.term.trim().toLowerCase()),
-    }));
-    setResults(res);
-    setPhase("result");
+  const handleChange = (e) => {
+    const val = e.target.value;
+    // real-time exact match (strip spaces, case-insensitive)
+    const match = roundItems.find(
+      (item) => !guessed.has(item.id) && normalize(item.term) === normalize(val)
+    );
+    if (match) {
+      setGuessed((g) => { const n = new Set(g); n.add(match.id); return n; });
+      setInput("");
+    } else {
+      setInput(val);
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && input.trim()) {
+      const match = roundItems.find(
+        (item) => !guessed.has(item.id) && normalize(item.term) === normalize(input.trim())
+      );
+      if (!match) {
+        setShake(true);
+        // re-trigger animation by forcing class toggle
+        setTimeout(() => setShake(false), 400);
+      }
+    }
   };
 
   const retry = () => {
-    const wrong = set.items.filter((item) => results.find((r) => r.term === item.term && !r.correct));
+    const wrong = roundItems.filter((item) => !guessed.has(item.id));
+    const base = retryAll || wrong.length === 0 ? [...set.items] : wrong;
+    setRoundItems(shuffle ? shuffleArray([...base]) : [...base]);
+    setGuessed(new Set());
+    setInput("");
+    setPhase("play");
     setRound((r) => r + 1);
-    startFlash(wrong);
   };
 
-  const correct = results.filter((r) => r.correct).length;
-  const wrong = results.length - correct;
-  const typedCount = userInput.split("\n").filter((s) => s.trim()).length;
-
-  // ── READY ──
-  if (phase === "ready") return (
-    <div className="fu" style={{ display: "flex", flexDirection: "column", minHeight: "85vh" }}>
-      <button style={{ ...btnG, alignSelf: "flex-start", marginBottom: 32 }} onClick={onBack}>← 뒤로</button>
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16 }}>
-        <div style={{ fontSize: 52 }}>⚡</div>
-        <h3 style={{ fontSize: 22, fontWeight: 700 }}>{set.title}</h3>
-        <p style={{ color: "var(--t2)", fontSize: 14, lineHeight: 1.9, maxWidth: 280 }}>
-          {set.items.length}개의 단어를 각&nbsp;
-          <strong style={{ color: "var(--acc)" }}>1초</strong>씩 보여드려요.<br />
-          모두 보고 나면 기억나는 단어를 모두 적어주세요.
-        </p>
-        <div style={{ background: "var(--card)", borderRadius: "var(--r)", padding: "14px 24px", border: "1.5px solid var(--bdr)", fontSize: 13, color: "var(--t2)", lineHeight: 2 }}>
-          ✦ 한 줄에 하나씩 입력하세요<br />✦ 순서는 상관없어요
-          {shuffle && <><br /><span style={{ color: "var(--acc)" }}>✦ 🔀 랜덤 순서로 보여드려요</span></>}
-        </div>
-        <button style={{ ...btnP, padding: "14px 48px", fontSize: 16, marginTop: 8 }} onClick={() => startFlash(set.items)}>시작하기</button>
-      </div>
-    </div>
-  );
-
-  // ── FLASH ──
-  if (phase === "flash") {
-    const item = flashItems[flashIdx];
-    return (
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "85vh" }}>
-        <div style={{ width: "100%", marginBottom: 40 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--t2)", marginBottom: 8 }}>
-            <span>라운드 {round}{shuffle ? " 🔀" : ""}</span>
-            <span>{Math.min(flashIdx + 1, flashItems.length)} / {flashItems.length}</span>
-          </div>
-          <ProgBar pct={(flashIdx / flashItems.length) * 100} />
-        </div>
-        {item && (
-          <div key={flashIdx} className="fp" style={{ background: "var(--card)", border: "2px solid var(--acc)", borderRadius: "var(--r)", padding: "48px 56px", textAlign: "center", minWidth: 220, boxShadow: "0 0 56px rgba(245,200,66,.12)" }}>
-            <div style={{ fontSize: 30, fontWeight: 700 }}>{item.term}</div>
-            {item.definition && <div style={{ fontSize: 15, color: "var(--t2)", marginTop: 10 }}>{item.definition}</div>}
-          </div>
-        )}
-        <p style={{ marginTop: 36, color: "var(--t3)", fontSize: 13 }}>집중해서 보세요...</p>
-      </div>
-    );
-  }
-
-  // ── WRITE ──
-  if (phase === "write") return (
-    <div className="fu" style={{ display: "flex", flexDirection: "column", minHeight: "85vh" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <h2 style={{ fontSize: 17, fontWeight: 600 }}>✍️ 기억나는 단어를 모두 적어보세요</h2>
-        <Tag>라운드 {round}</Tag>
-      </div>
-      <div style={{ background: "var(--card)", borderRadius: "var(--rs)", padding: "10px 14px", marginBottom: 14, border: "1.5px solid var(--bdr)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: 13, color: "var(--t2)" }}>총 <strong style={{ color: "var(--t1)" }}>{set.items.length}개</strong> — 한 줄에 하나씩</span>
-        <span style={{ fontSize: 13, color: typedCount >= set.items.length ? "var(--ok)" : "var(--t2)" }}>{typedCount} / {set.items.length}</span>
-      </div>
-      <textarea style={{ ...inp, resize: "none", lineHeight: 2, fontSize: 15, flex: 1, marginBottom: 14, minHeight: 240 }}
-        placeholder={"기억나는 단어를 한 줄에 하나씩 적어보세요\n\n예:\n수은\n납\n비소\n..."}
-        value={userInput} onChange={(e) => setUserInput(e.target.value)} autoFocus />
-      <button onClick={submit} disabled={!userInput.trim()} style={{ ...btnP, width: "100%", padding: 14, fontSize: 15, opacity: !userInput.trim() ? 0.4 : 1 }}>
-        제출하기
-      </button>
-    </div>
-  );
+  const wrongItems = roundItems.filter((item) => !guessed.has(item.id));
+  const correct = guessed.size;
 
   // ── RESULT ──
   if (phase === "result") {
-    const complete = wrong === 0;
+    const complete = wrongItems.length === 0;
     return (
       <div className="fu">
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 24 }}>
@@ -792,49 +717,119 @@ function RecallScreen({ set, onBack, shuffle }) {
         </div>
         <div style={{ textAlign: "center", padding: "28px 20px", background: "var(--surf)", borderRadius: "var(--r)", border: "1.5px solid var(--bdr)", marginBottom: 20 }}>
           <div style={{ fontSize: 44, marginBottom: 10 }}>{complete ? "🎉" : "💪"}</div>
-          <div style={{ fontSize: 44, fontWeight: 800, color: complete ? "var(--ok)" : "var(--acc)", letterSpacing: "-0.02em" }}>{correct} / {set.items.length}</div>
-          <div style={{ color: "var(--t2)", fontSize: 14, marginTop: 8 }}>{complete ? "완벽해요! 모두 맞혔어요 🎊" : `${wrong}개를 다시 확인해봐요`}</div>
+          <div style={{ fontSize: 44, fontWeight: 800, color: complete ? "var(--ok)" : "var(--acc)", letterSpacing: "-0.02em" }}>{correct} / {roundItems.length}</div>
+          <div style={{ color: "var(--t2)", fontSize: 14, marginTop: 8 }}>{complete ? "완벽해요! 모두 맞혔어요 🎊" : `${wrongItems.length}개를 다시 확인해봐요`}</div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 20 }}>
-          {results.map((r, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, background: r.correct ? "var(--ok-d)" : "var(--err-d)", border: `1.5px solid ${r.correct ? "var(--ok-b)" : "var(--err-b)"}`, borderRadius: "var(--rs)", padding: "10px 14px" }}>
-              <span style={{ color: r.correct ? "var(--ok)" : "var(--err)", fontSize: 16, fontWeight: 700, minWidth: 18 }}>{r.correct ? "✓" : "✗"}</span>
-              <span style={{ fontSize: 14, flex: 1 }}>{r.term}</span>
-            </div>
-          ))}
+          {roundItems.map((item) => {
+            const ok = guessed.has(item.id);
+            return (
+              <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, background: ok ? "var(--ok-d)" : "var(--err-d)", border: `1.5px solid ${ok ? "var(--ok-b)" : "var(--err-b)"}`, borderRadius: "var(--rs)", padding: "10px 14px" }}>
+                <span style={{ color: ok ? "var(--ok)" : "var(--err)", fontSize: 16, fontWeight: 700, minWidth: 18 }}>{ok ? "✓" : "✗"}</span>
+                <span style={{ fontSize: 14, flex: 1 }}>{item.term}</span>
+              </div>
+            );
+          })}
         </div>
         {complete ? (
           <button onClick={onBack} style={{ ...btnP, width: "100%", padding: 14, fontSize: 15 }}>완료! 돌아가기</button>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <button onClick={retry} style={{ ...btnP, width: "100%", padding: 14, fontSize: 15 }}>⚡ 틀린 {wrong}개 다시 보기 → 재도전</button>
+            <button onClick={retry} style={{ ...btnP, width: "100%", padding: 14, fontSize: 15 }}>
+              ⚡ {retryAll ? "전체 다시 도전" : `틀린 ${wrongItems.length}개 다시 도전`}
+            </button>
             <button onClick={onBack} style={{ ...btnG, width: "100%", padding: 14, fontSize: 15 }}>그만하기</button>
           </div>
         )}
       </div>
     );
   }
+
+  // ── PLAY ──
+  return (
+    <div className="fu">
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+        <button style={btnG} onClick={onBack}>← 뒤로</button>
+        <div style={{ flex: 1 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 600, lineHeight: 1.3 }}>{set.title}</h2>
+          {round > 1 && <span style={{ fontSize: 12, color: "var(--t2)" }}>라운드 {round}</span>}
+        </div>
+      </div>
+
+      {/* Progress */}
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
+          <span style={{ color: "var(--t3)" }}>{shuffle ? "🔀 랜덤" : "순서대로"}</span>
+          <span style={{ fontWeight: 700, color: correct > 0 ? "var(--ok)" : "var(--t2)" }}>
+            {correct} / {roundItems.length} 맞힘
+          </span>
+        </div>
+        <ProgBar pct={(correct / roundItems.length) * 100} color="var(--ok)" />
+      </div>
+
+      {/* Items list */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 5, maxHeight: 300, overflowY: "auto", marginBottom: 14 }}>
+        {roundItems.map((item, i) => {
+          const isGuessed = guessed.has(item.id);
+          return (
+            <div key={item.id} style={{
+              display: "flex", alignItems: "center", gap: 8,
+              background: isGuessed ? "var(--ok-d)" : "var(--card)",
+              border: `1.5px solid ${isGuessed ? "var(--ok-b)" : "var(--bdr)"}`,
+              borderRadius: "var(--rs)", padding: "8px 12px",
+              transition: "background .3s, border-color .3s",
+            }}>
+              <span style={{ fontSize: 11, color: isGuessed ? "var(--ok)" : "var(--t3)", minWidth: 20, fontWeight: 700 }}>{i + 1}</span>
+              {isGuessed ? (
+                <>
+                  <span style={{ flex: 1, fontSize: 14, color: "var(--ok)", fontWeight: 500 }}>{item.term}</span>
+                  <span style={{ color: "var(--ok)", fontSize: 13 }}>✓</span>
+                </>
+              ) : (
+                <span style={{ flex: 1, fontSize: 14, color: "var(--t3)", letterSpacing: 3 }}>• • •</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Input */}
+      <input
+        key={shake ? "shake" : "normal"}
+        ref={inputRef}
+        className={shake ? "shake" : ""}
+        style={{
+          ...inp,
+          fontSize: 16, padding: "13px 16px", marginBottom: 10,
+          borderColor: shake ? "var(--err)" : undefined,
+          display: "block",
+        }}
+        placeholder="단어를 입력하세요 (띄어쓰기 무시, 실시간 체크)"
+        value={input}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
+        autoFocus
+      />
+
+      <button onClick={() => setPhase("result")} style={{ ...btnG, width: "100%", padding: 12, fontSize: 13 }}>
+        포기하고 결과 보기
+      </button>
+    </div>
+  );
 }
 
 // ============================================================
 // FLASHCARD SCREEN
 // ============================================================
-function FlashcardScreen({ set, onBack, shuffle }) {
+function FlashcardScreen({ set, onBack, shuffle, reverseCard, retryAll }) {
   const [displayItems, setDisplayItems] = useState(() =>
-    shuffle ? shuffleArray([...set.items]) : set.items
+    shuffle ? shuffleArray([...set.items]) : [...set.items]
   );
   const [idx, setIdx] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [known, setKnown] = useState(new Set());
   const [done, setDone] = useState(false);
-  const [reversed, setReversed] = useState(false);
-
-  const item = displayItems[idx];
   const total = displayItems.length;
-  const front = reversed ? (item.definition || item.term) : item.term;
-  const back = reversed ? item.term : (item.definition || <span style={{ color: "var(--t3)" }}>정의 없음</span>);
-  const frontLabel = reversed ? "정의" : "단어";
-  const backLabel = reversed ? "단어" : "정의";
 
   const go = (next) => {
     setFlipped(false);
@@ -844,37 +839,65 @@ function FlashcardScreen({ set, onBack, shuffle }) {
       else if (!next && idx > 0) setIdx((i) => i - 1);
     }, 180);
   };
-  const markKnown = () => { setKnown((k) => new Set([...k, item.id])); go(true); };
-  const markUnknown = () => { setKnown((k) => { const n = new Set(k); n.delete(item.id); return n; }); go(true); };
 
-  const restart = () => {
-    setDisplayItems(shuffle ? shuffleArray([...set.items]) : set.items);
-    setIdx(0); setFlipped(false); setDone(false); setKnown(new Set()); setReversed(false);
+  const markKnown = () => {
+    const item = displayItems[idx];
+    if (item) setKnown((k) => new Set([...k, item.id]));
+    go(true);
+  };
+  const markUnknown = () => {
+    const item = displayItems[idx];
+    if (item) setKnown((k) => { const n = new Set(k); n.delete(item.id); return n; });
+    go(true);
   };
 
-  if (done) return (
-    <div className="fu" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "85vh", textAlign: "center", gap: 16 }}>
-      <div style={{ fontSize: 52 }}>🎉</div>
-      <h3 style={{ fontSize: 22, fontWeight: 700 }}>완료!</h3>
-      <div style={{ fontSize: 44, fontWeight: 800, color: "var(--acc)" }}>{known.size} / {total}</div>
-      <p style={{ color: "var(--t2)", fontSize: 14 }}>알고 있는 카드</p>
-      <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-        <button style={btnG} onClick={restart}>다시 하기</button>
-        <button style={btnP} onClick={onBack}>완료</button>
+  const restart = () => {
+    const unknownItems = set.items.filter((it) => !known.has(it.id));
+    const base = retryAll || unknownItems.length === 0 ? [...set.items] : unknownItems;
+    setDisplayItems(shuffle ? shuffleArray([...base]) : [...base]);
+    setIdx(0); setFlipped(false); setDone(false); setKnown(new Set());
+  };
+
+  // ── DONE — checked BEFORE accessing item to prevent crash ──
+  if (done) {
+    const unknownCount = total - known.size;
+    return (
+      <div className="fu" style={{
+        display: "flex", flexDirection: "column", alignItems: "center",
+        justifyContent: "center", minHeight: "85vh", textAlign: "center", gap: 16,
+        background: "var(--bg)",
+      }}>
+        <div style={{ fontSize: 52 }}>🎉</div>
+        <h3 style={{ fontSize: 22, fontWeight: 700 }}>완료!</h3>
+        <div style={{ fontSize: 44, fontWeight: 800, color: "var(--acc)" }}>{known.size} / {total}</div>
+        <p style={{ color: "var(--t2)", fontSize: 14 }}>알고 있는 카드</p>
+        <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+          <button style={btnG} onClick={restart}>
+            {retryAll || unknownCount === 0 ? "다시 하기" : `모르는 ${unknownCount}개 다시`}
+          </button>
+          <button style={btnP} onClick={onBack}>완료</button>
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
+
+  // ── CARD ──
+  const item = displayItems[idx];
+  if (!item) return null;
+
+  const front = reverseCard ? (item.definition || item.term) : item.term;
+  const back = reverseCard ? item.term : (item.definition || "");
+  const frontLabel = reverseCard ? "정의" : "단어";
+  const backLabel = reverseCard ? "단어" : "정의";
 
   return (
     <div className="fu">
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 24 }}>
         <button style={btnG} onClick={onBack}>← 뒤로</button>
-        <h2 style={{ fontSize: 18, fontWeight: 600 }}>🃏 플래시카드{shuffle ? " 🔀" : ""}</h2>
-        <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-          <button onClick={() => { setReversed((r) => !r); setFlipped(false); setIdx(0); setKnown(new Set()); setDone(false); }}
-            style={{ ...btnG, padding: "5px 10px", fontSize: 12, color: reversed ? "var(--acc)" : "var(--t2)", borderColor: reversed ? "var(--acc-b)" : "var(--bdr)", background: reversed ? "var(--acc-d)" : "transparent" }}>
-            ⇄ {reversed ? "정의→단어" : "단어→정의"}
-          </button>
+        <h2 style={{ fontSize: 18, fontWeight: 600 }}>
+          🃏 플래시카드{shuffle ? " 🔀" : ""}{reverseCard ? " ⇄" : ""}
+        </h2>
+        <span style={{ marginLeft: "auto" }}>
           <Tag>{idx + 1} / {total}</Tag>
         </span>
       </div>
@@ -892,7 +915,9 @@ function FlashcardScreen({ set, onBack, shuffle }) {
           </div>
           <div style={{ position: "absolute", inset: 0, backfaceVisibility: "hidden", transform: "rotateY(180deg)", background: "var(--surf)", border: "2px solid var(--acc)", borderRadius: "var(--r)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 32, boxShadow: "0 0 32px rgba(245,200,66,.07)" }}>
             <div style={{ fontSize: 11, color: "var(--acc)", marginBottom: 14, textTransform: "uppercase", letterSpacing: "0.12em", fontWeight: 600 }}>{backLabel}</div>
-            <div style={{ fontSize: 20, textAlign: "center", lineHeight: 1.7 }}>{back}</div>
+            <div style={{ fontSize: 20, textAlign: "center", lineHeight: 1.7 }}>
+              {back || <span style={{ color: "var(--t3)" }}>정의 없음</span>}
+            </div>
           </div>
         </div>
       </div>
@@ -920,7 +945,7 @@ export default function App() {
   const [screen, setScreen] = useState("home");
   const [current, setCurrent] = useState(null);
   const [prefill, setPrefill] = useState(null);
-  const [shuffle, setShuffle] = useState(false);
+  const [opts, setOpts] = useState({ shuffle: false, reverseCard: false, retryAll: false });
 
   useEffect(() => {
     const el = document.createElement("style");
@@ -944,6 +969,7 @@ export default function App() {
     setPrefill({ items, type });
     setScreen("create");
   };
+  const toggleOpt = (key) => setOpts((o) => ({ ...o, [key]: !o[key] }));
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)", maxWidth: 480, margin: "0 auto", padding: "28px 18px 64px" }}>
@@ -967,15 +993,15 @@ export default function App() {
           onEdit={() => setScreen("edit")}
           onStartRecall={() => setScreen("recall")}
           onStartFlash={() => setScreen("flashcard")}
-          shuffle={shuffle}
-          onToggleShuffle={() => setShuffle((s) => !s)}
+          opts={opts}
+          onToggle={toggleOpt}
         />
       )}
       {screen === "recall" && current && (
-        <RecallScreen set={current} onBack={() => setScreen("detail")} shuffle={shuffle} />
+        <RecallScreen set={current} onBack={() => setScreen("detail")} shuffle={opts.shuffle} retryAll={opts.retryAll} />
       )}
       {screen === "flashcard" && current && (
-        <FlashcardScreen set={current} onBack={() => setScreen("detail")} shuffle={shuffle} />
+        <FlashcardScreen set={current} onBack={() => setScreen("detail")} shuffle={opts.shuffle} reverseCard={opts.reverseCard} retryAll={opts.retryAll} />
       )}
     </div>
   );
