@@ -544,8 +544,8 @@ function DetailScreen({ set, onBack, onDelete, onStartRecall, onStartFlash, onEd
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-        <button style={{ ...btnP, padding: 14 }} onClick={onStartRecall}>📝 리콜 시작</button>
-        <button style={{ ...btnG, padding: 14 }} onClick={onStartFlash}>🃏 플래시카드</button>
+        <button style={{ ...btnP, padding: 14 }} onClick={onStartRecall}>📝 리콜</button>
+        <button style={{ ...btnP, padding: 14 }} onClick={onStartFlash}>🃏 플래시카드</button>
       </div>
 
       {/* Options accordion */}
