@@ -852,15 +852,26 @@ function FlashcardScreen({ set, onBack, shuffle, reverseCard, retryAll }) {
   };
 
   const restart = () => {
-    const unknownItems = set.items.filter((it) => !known.has(it.id));
-    const base = retryAll || unknownItems.length === 0 ? [...set.items] : unknownItems;
-    setDisplayItems(shuffle ? shuffleArray([...base]) : [...base]);
-    setIdx(0); setFlipped(false); setDone(false); setKnown(new Set());
+    if (retryAll) {
+      // 전체 다시: known 초기화 후 전부
+      setDisplayItems(shuffle ? shuffleArray([...set.items]) : [...set.items]);
+      setKnown(new Set());
+    } else {
+      // 누적 방식: known은 유지하고 아직 모르는 것만
+      const stillUnknown = set.items.filter((it) => !known.has(it.id));
+      if (stillUnknown.length === 0) return; // 다 맞췄으면 아무것도 안 함
+      setDisplayItems(shuffle ? shuffleArray([...stillUnknown]) : [...stillUnknown]);
+      // known은 건드리지 않음 — 이전 라운드 정답 누적 유지
+    }
+    setIdx(0); setFlipped(false); setDone(false);
   };
 
   // ── DONE — checked BEFORE accessing item to prevent crash ──
   if (done) {
-    const unknownCount = total - known.size;
+    // 전체 세트 기준 누적 진행률
+    const totalKnown = set.items.filter((it) => known.has(it.id)).length;
+    const totalAll = set.items.length;
+    const stillUnknown = totalAll - totalKnown;
     return (
       <div className="fu" style={{
         display: "flex", flexDirection: "column", alignItems: "center",
@@ -869,11 +880,11 @@ function FlashcardScreen({ set, onBack, shuffle, reverseCard, retryAll }) {
       }}>
         <div style={{ fontSize: 52 }}>🎉</div>
         <h3 style={{ fontSize: 22, fontWeight: 700 }}>완료!</h3>
-        <div style={{ fontSize: 44, fontWeight: 800, color: "var(--acc)" }}>{known.size} / {total}</div>
-        <p style={{ color: "var(--t2)", fontSize: 14 }}>알고 있는 카드</p>
+        <div style={{ fontSize: 44, fontWeight: 800, color: "var(--acc)" }}>{totalKnown} / {totalAll}</div>
+        <p style={{ color: "var(--t2)", fontSize: 14 }}>전체 중 알고 있는 카드</p>
         <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
           <button style={btnG} onClick={restart}>
-            {retryAll || unknownCount === 0 ? "다시 하기" : `모르는 ${unknownCount}개 다시`}
+            {retryAll || stillUnknown === 0 ? "처음부터 다시" : `모르는 ${stillUnknown}개 다시`}
           </button>
           <button style={btnP} onClick={onBack}>완료</button>
         </div>
