@@ -654,9 +654,22 @@ function RecallScreen({ set, onBack, shuffle, retryAll }) {
   );
   const [guessed, setGuessed] = useState(new Set());
   const [input, setInput] = useState("");
-  const [phase, setPhase] = useState("play"); // "play" | "result"
+  const [phase, setPhase] = useState("ready"); // "ready" | "flash" | "play" | "result"
+  const [flashIdx, setFlashIdx] = useState(0);
   const [shake, setShake] = useState(false);
   const inputRef = useRef();
+  const timerRef = useRef();
+
+  // Flash timer — advance every 1s
+  useEffect(() => {
+    if (phase !== "flash") return;
+    if (flashIdx >= roundItems.length) {
+      setPhase("play");
+      return;
+    }
+    timerRef.current = setTimeout(() => setFlashIdx((i) => i + 1), 1000);
+    return () => clearTimeout(timerRef.current);
+  }, [phase, flashIdx, roundItems.length]);
 
   // Auto-finish when all guessed
   useEffect(() => {
@@ -665,6 +678,8 @@ function RecallScreen({ set, onBack, shuffle, retryAll }) {
       return () => clearTimeout(t);
     }
   }, [guessed.size, roundItems.length]);
+
+  const startFlash = () => { setFlashIdx(0); setPhase("flash"); };
 
   const handleChange = (e) => {
     const val = e.target.value;
@@ -696,15 +711,61 @@ function RecallScreen({ set, onBack, shuffle, retryAll }) {
   const retry = () => {
     const wrong = roundItems.filter((item) => !guessed.has(item.id));
     const base = retryAll || wrong.length === 0 ? [...set.items] : wrong;
-    setRoundItems(shuffle ? shuffleArray([...base]) : [...base]);
+    const next = shuffle ? shuffleArray([...base]) : [...base];
+    setRoundItems(next);
     setGuessed(new Set());
     setInput("");
-    setPhase("play");
+    setFlashIdx(0);
+    setPhase("flash");
     setRound((r) => r + 1);
   };
 
   const wrongItems = roundItems.filter((item) => !guessed.has(item.id));
   const correct = guessed.size;
+
+  // ── READY ──
+  if (phase === "ready") return (
+    <div className="fu" style={{ display: "flex", flexDirection: "column", minHeight: "85vh" }}>
+      <button style={{ ...btnG, alignSelf: "flex-start", marginBottom: 32 }} onClick={onBack}>← 뒤로</button>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16 }}>
+        <div style={{ fontSize: 52 }}>⚡</div>
+        <h3 style={{ fontSize: 22, fontWeight: 700 }}>{set.title}</h3>
+        <p style={{ color: "var(--t2)", fontSize: 14, lineHeight: 1.9, maxWidth: 280 }}>
+          {roundItems.length}개의 단어를 각&nbsp;
+          <strong style={{ color: "var(--acc)" }}>1초</strong>씩 보여드려요.<br />
+          그 다음 기억나는 단어를 입력해 맞춰보세요.
+        </p>
+        <div style={{ background: "var(--card)", borderRadius: "var(--r)", padding: "14px 24px", border: "1.5px solid var(--bdr)", fontSize: 13, color: "var(--t2)", lineHeight: 2 }}>
+          ✦ 띄어쓰기는 달라도 정답 인정<br />
+          ✦ 순서 상관없이 입력{shuffle ? <><br /><span style={{ color: "var(--acc)" }}>✦ 🔀 랜덤 순서로 보여드려요</span></> : null}
+        </div>
+        <button style={{ ...btnP, padding: "14px 48px", fontSize: 16, marginTop: 8 }} onClick={startFlash}>시작하기</button>
+      </div>
+    </div>
+  );
+
+  // ── FLASH ──
+  if (phase === "flash") {
+    const item = roundItems[flashIdx];
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "85vh" }}>
+        <div style={{ width: "100%", marginBottom: 40 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--t2)", marginBottom: 8 }}>
+            <span>라운드 {round}{shuffle ? " 🔀" : ""}</span>
+            <span>{Math.min(flashIdx + 1, roundItems.length)} / {roundItems.length}</span>
+          </div>
+          <ProgBar pct={(flashIdx / roundItems.length) * 100} />
+        </div>
+        {item && (
+          <div key={flashIdx} className="fp" style={{ background: "var(--card)", border: "2px solid var(--acc)", borderRadius: "var(--r)", padding: "48px 56px", textAlign: "center", minWidth: 220, boxShadow: "0 0 56px rgba(245,200,66,.12)" }}>
+            <div style={{ fontSize: 30, fontWeight: 700 }}>{item.term}</div>
+            {item.definition && <div style={{ fontSize: 15, color: "var(--t2)", marginTop: 10 }}>{item.definition}</div>}
+          </div>
+        )}
+        <p style={{ marginTop: 36, color: "var(--t3)", fontSize: 13 }}>집중해서 보세요...</p>
+      </div>
+    );
+  }
 
   // ── RESULT ──
   if (phase === "result") {
